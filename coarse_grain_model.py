@@ -24,68 +24,45 @@ def create_sliding_window_causal_mask(sequence_length, window_size, device="cpu"
 
 # 1. Create the Custom Model Class 🧠
 class GPT2WithSlidingWindow(GPT2LMHeadModel):
-    def __init__(self, config):
+    def __init__(self, config, window):
         super().__init__(config)
-        # Ensure window_size is stored in the config
-        if not hasattr(self.config, "window_size"):
-            # Set a default if not provided
-            self.config.window_size = 128 
-            print(f"Warning: 'window_size' not found in config. Defaulting to {self.config.window_size}.")
+        self.config.window_size = window
 
     def forward(
         self,
         input_ids=None,
         past_key_values=None,
         attention_mask=None,
-        token_type_ids=None,
-        position_ids=None,
-        head_mask=None,
-        inputs_embeds=None,
-        encoder_hidden_states=None,
-        encoder_attention_mask=None,
-        labels=None,
-        use_cache=None,
-        output_attentions=None,
-        output_hidden_states=None,
-        return_dict=None,
+        **kwargs,
     ):
-        batch_size, seq_len = input_ids.shape
-        device = input_ids.device
+        # 1. Get sequence lengths
+        new_token_len = input_ids.shape[1]
+        past_len = 0
+        if past_key_values is not None and len(past_key_values) > 0:
+            # The length of the past is stored in the shape of the KV cache tensors
+            past_len = past_key_values[0][0].shape[2]
+        
+        total_len = past_len + new_token_len
 
-        # 2. Generate the sliding window mask
+        # 2. Create the full sliding window mask for the entire sequence
+        # This works for both the initial prompt and subsequent generation steps
         sliding_window_mask = create_sliding_window_causal_mask(
-            sequence_length=seq_len,
+            sequence_length=total_len,
             window_size=self.config.window_size,
-            device=device
-        ) # Shape: [1, 1, seq_len, seq_len]
-
-        # 3. Combine with the padding mask (if it exists)
-        # The 'attention_mask' from the data collator is for padding.
-        # It's shape is [batch_size, seq_len]
-        if attention_mask is not None:
-            # Reshape padding mask for broadcasting: [batch_size, 1, 1, seq_len]
-            # and convert to the additive format (0 for attend, -1e9 for don't attend)
-            extended_padding_mask = (1.0 - attention_mask[:, None, None, :]) * -1e9
-            # Add the masks together. Broadcasting handles the dimensions.
-            # The final mask will prevent attention to both padded tokens and out-of-window tokens.
-            final_attention_mask = sliding_window_mask + extended_padding_mask
-        else:
-            final_attention_mask = sliding_window_mask
-
-        # 4. Call the original forward method with our new mask
+            device=input_ids.device
+        )
+        
+        # 3. CRITICAL: Slice the mask
+        # When using the KV cache, the model only needs the attention mask
+        # for the *new* tokens (queries). We slice the full mask to get
+        # the last `new_token_len` rows.
+        final_attention_mask = sliding_window_mask[:, :, -new_token_len:, :]
+        
+        # The original forward pass can now use our correctly shaped mask
         return super().forward(
             input_ids=input_ids,
             past_key_values=past_key_values,
-            attention_mask=final_attention_mask, # <-- Our custom mask is injected here!
-            token_type_ids=token_type_ids,
-            position_ids=position_ids,
-            head_mask=head_mask,
-            inputs_embeds=inputs_embeds,
-            encoder_hidden_states=encoder_hidden_states,
-            encoder_attention_mask=encoder_attention_mask,
-            labels=labels,
-            use_cache=use_cache,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
+            # Pass our corrected and sliced mask
+            attention_mask=final_attention_mask,
+            **kwargs,
         )
