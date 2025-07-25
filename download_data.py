@@ -119,21 +119,6 @@ def prepare_pretraining_data(save_dir, target_size_mb=200):
         print(f"An error occurred while preparing pre-training data: {e}")
         print("Please check your internet connection.")
 
-
-def run_tests(data_dir):
-    # Test 2: Verify pre-training data
-    pretrain_path = os.path.join(data_dir, "pretraining_shard.txt")
-    try:
-        file_size = os.path.getsize(pretrain_path) / (1024 * 1024)
-        print(f"\n✅ Pre-training shard exists at {pretrain_path}")
-        print(f"   File size: {file_size:.2f} MB")
-        with open(pretrain_path, 'r', encoding='utf-8') as f:
-            print("\n   First 200 characters of pre-training shard:")
-            print(f"   '{f.read(200)}...'")
-    except Exception as e:
-        print(f"❌ Failed to test pre-training data: {e}")
-
-
 if __name__ == "__main__":
     # Define the main data directory as per the project structure
     DATA_DIRECTORY = "./data"
