@@ -1,4 +1,4 @@
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModelForSequenceClassification
 import os
 
 def download_model(model_name, save_directory):
@@ -13,7 +13,14 @@ def download_model(model_name, save_directory):
     
     # Download the tokenizer and model
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForCausalLM.from_pretrained(model_name)
+    
+    # Use the correct AutoModel class based on the model name/type
+    if "Classifier" in model_name:
+        print(f"-> Downloading as a Sequence Classification model.")
+        model = AutoModelForSequenceClassification.from_pretrained(model_name)
+    else:
+        print(f"-> Downloading as a Causal LM.")
+        model = AutoModelForCausalLM.from_pretrained(model_name)
     
     # Save them to the specified directory
     tokenizer.save_pretrained(save_directory)
@@ -25,7 +32,8 @@ if __name__ == "__main__":
     # Define the models to download and their destination folders
     models_to_download = {
         "gpt2": "./models/gpt2",
-        "gpt2-medium": "./models/gpt2-medium"
+        "gpt2-medium": "./models/gpt2-medium",
+        "Human-CentricAI/LLM-Refusal-Classifier": "./models/llm-refusal-classifier"
     }
     
     for name, path in models_to_download.items():
