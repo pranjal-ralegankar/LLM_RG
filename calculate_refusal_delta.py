@@ -5,19 +5,19 @@ import torch
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, GPT2Tokenizer
 from tqdm import tqdm
 
-from coarse_grain_model import GPT2WithSlidingWindow
-
-def load_classifier(device):
+def load_model(device,model_path):
     """Loads the LLM Refusal Classifier model and tokenizer."""
-    classifier_path = "./models/llm-refusal-classifier"
-    if not os.path.exists(classifier_path):
-        print(f"❌ Error: Refusal classifier not found at {classifier_path}")
+    if not os.path.exists(model_path):
+        print(f"❌ Error: Refusal classifier not found at {model_path}")
         print("Please run `python download_models.py` first.")
         return None, None
         
-    print(f"Loading refusal classifier from {classifier_path}...")
-    tokenizer = AutoTokenizer.from_pretrained(classifier_path)
-    model = AutoModelForSequenceClassification.from_pretrained(classifier_path).to(device)
+    print(f"Loading m model from {model_path}...")
+    tokenizer = AutoTokenizer.from_pretrained(model_path)
+    if "classifier" in model_path:
+        model = AutoModelForSequenceClassification.from_pretrained(model_path).to(device)
+    else:
+        model = AutoModelForCausalLM.from_pretrained(model_path).to(device)
     model.eval()
     return model, tokenizer
 
@@ -58,7 +58,7 @@ def count_refusals(gen_model, gen_tokenizer, classifier_model, classifier_tokeni
         with torch.no_grad():
             outputs = gen_model.generate(
                 **inputs,
-                max_new_tokens=100,
+                max_new_tokens=30,
                 temperature=0.7,
                 top_p=0.95,
                 do_sample=True,
@@ -79,18 +79,12 @@ def count_refusals(gen_model, gen_tokenizer, classifier_model, classifier_tokeni
 def score(model_path):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
-
-    classifier_model, classifier_tokenizer = load_classifier(device)
+    
+    classifier_model, classifier_tokenizer = load_model(device,"./models/llm-refusal-classifier")
     if classifier_model is None:
+        print("Error, no classifier model")
         return
-    
-    print(f"Loading generative model from: {model_path}")
-    gen_tokenizer = GPT2Tokenizer.from_pretrained(model_path)
-    if gen_tokenizer.pad_token is None:
-        gen_tokenizer.pad_token = gen_tokenizer.eos_token
-    
-    gen_model = AutoModelForCausalLM.from_pretrained(model_path).to(device)
-    gen_model.eval()
+    gen_model, gen_tokenizer= load_model(device,model_path)
 
     # 3. Load Safety Datasets
     safety_data_path = "./data/safety_evaluation_prompts.json"
