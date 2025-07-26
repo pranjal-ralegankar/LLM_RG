@@ -2,7 +2,7 @@ import argparse
 import json
 import os
 import torch
-from transformers import AutoTokenizer, AutoModelForSequenceClassification, GPT2Tokenizer
+from transformers import AutoTokenizer, AutoModelForSequenceClassification, GPT2Tokenizer, AutoModelForCausalLM
 from tqdm import tqdm
 
 def load_model(device,model_path):

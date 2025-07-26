@@ -96,7 +96,7 @@ def prepare_pretraining_data(save_dir, target_size_mb=200):
     try:
         # Stream the dataset to avoid downloading the entire thing (which is huge)
         print("Streaming Wikipedia dataset...")
-        dataset = load_dataset("wikipedia", "20220301.en", streaming=True, split="train")
+        dataset = load_dataset("wikimedia/wikipedia", "20231101.en", streaming=True, split="train")
 
         # Write text to a file until we reach the target size
         with open(output_path, 'w', encoding='utf-8') as f:
