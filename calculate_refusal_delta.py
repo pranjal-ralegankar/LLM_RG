@@ -59,9 +59,9 @@ def count_refusals(gen_model, gen_tokenizer, classifier_model, classifier_tokeni
             outputs = gen_model.generate(
                 **inputs,
                 max_new_tokens=30,
-                temperature=0.7,
-                top_p=0.95,
-                do_sample=True,
+                # temperature=0.7,
+                # top_p=0.95,
+                # do_sample=True,
                 pad_token_id=gen_tokenizer.eos_token_id
             )
         
