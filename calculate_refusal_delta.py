@@ -79,13 +79,13 @@ def count_refusals(gen_model, gen_tokenizer, classifier_model, classifier_tokeni
 def score(model_path):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
-    
+
     classifier_model, classifier_tokenizer = load_model(device,"./models/llm-refusal-classifier")
     if classifier_model is None:
-        print("Error, no classifier model")
+        print("Error no classifier model found. Please run `download_models.py` first.")
         return
     gen_model, gen_tokenizer= load_model(device,model_path)
-
+    
     # 3. Load Safety Datasets
     safety_data_path = "./data/safety_evaluation_prompts.json"
     print(f"Loading safety data from: {safety_data_path}")
