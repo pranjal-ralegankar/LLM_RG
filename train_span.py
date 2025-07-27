@@ -20,7 +20,7 @@ def train_w_span(MODEL_NAME,SPAN):
     # SPAN       = 124           # sliding-window width
     BATCH      = 8
     EPOCHS     = 2
-    LR         = 5e-6
+    LR         = 5e-7
     SEED       = 42
     DEVICE     = "cuda"
     
@@ -93,9 +93,9 @@ def train_w_span(MODEL_NAME,SPAN):
     print(f"🚀 Training Gemma with sliding-window b={SPAN} …")
     trainer.train()
     
-    with torch.no_grad():
-        eval_loss = trainer.evaluate(lm_ds_small.select(range(1024)))["eval_loss"]
-        print(f"✓ final PPL ≈ {math.exp(eval_loss):.2f}")
+    # with torch.no_grad():
+        # eval_loss = trainer.evaluate(lm_ds_small.select(range(1024)))["eval_loss"]
+        # print(f"✓ final PPL ≈ {math.exp(eval_loss):.2f}")
     
     # ─── 8) cleanup ─────────────────────────────────────────────────
     del model, trainer

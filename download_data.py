@@ -130,4 +130,4 @@ if __name__ == "__main__":
         
     # Run the preparation functions
     prepare_safety_data(DATA_DIRECTORY)
-    prepare_pretraining_data(DATA_DIRECTORY)
+    # prepare_pretraining_data(DATA_DIRECTORY)

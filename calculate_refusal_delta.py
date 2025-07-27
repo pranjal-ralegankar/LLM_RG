@@ -8,8 +8,9 @@ import gc
 from coarse_grain_model import GemmaWithSlidingWindow
 import re
 
-def load_model(device,model_path):
-    """Loads the LLM Refusal Classifier model and tokenizer."""
+def load_model(device,model_path,window_size=None):
+    """Loads the LLM Refusal Classifier model and tokenizer. 
+    If model_path has sw in the name it automatically applies the attention mask with appropriate span. If base model path is passed in with window_size, then attention mask with window size is applied to the base model. """
     if not os.path.exists(model_path):
         print(f"❌ Error: model not found at location: {model_path}")
         print("Please either check the correct path to model or run `python download_models.py` first.")
@@ -27,6 +28,8 @@ def load_model(device,model_path):
             raise ValueError("model path is not according to convention")
         print("Applying attention mask to previous "+str(window_mask)+" tokens")
         model = GemmaWithSlidingWindow.from_pretrained(model_path,window_mask).to(device)
+    elif window_size:
+        model = GemmaWithSlidingWindow.from_pretrained(model_path,window_size).to(device)
     else:
         model = AutoModelForCausalLM.from_pretrained(model_path).to(device)
     model.eval()
@@ -87,7 +90,7 @@ def count_refusals(gen_model, gen_tokenizer, classifier_model, classifier_tokeni
             
     return refusal_count
 
-def score(model_path,num_prompts=1000):
+def score(model_path,num_prompts=1000,window=None):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
 
@@ -95,7 +98,7 @@ def score(model_path,num_prompts=1000):
     if classifier_model is None:
         print("Error no classifier model found. Please run `download_models.py` first.")
         return
-    gen_model, gen_tokenizer= load_model(device,model_path)
+    gen_model, gen_tokenizer= load_model(device,model_path,window)
     
     # 3. Load Safety Datasets
     safety_data_path = "./data/safety_evaluation_prompts.json"

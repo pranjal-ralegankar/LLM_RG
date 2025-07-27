@@ -136,7 +136,7 @@ class LoRACbCausalLM(torch.nn.Module):
         # if masking is enabled, pre-build mask buffer
         if window_size > 0:
             max_L = 512 + window_size
-            buf   = create_sliding_window_causal_mask(max_L, window_size, device=DEVICE)
+            buf   = create_sliding_window_causal_mask(max_L, window_size, device="cuda")
             self.register_buffer("cb_mask_full", buf, persistent=False)
 
     def forward(self, input_ids, attention_mask=None, past_key_values=None, labels=None, **kwargs):

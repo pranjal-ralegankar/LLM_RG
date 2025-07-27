@@ -3,7 +3,7 @@ import os
 from huggingface_hub import login
 
 # WARNING: Not secure. Avoid doing this in shared or production code.
-# login(token="")
+login(token="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")
 
 def download_model(model_name, save_directory):
     """
