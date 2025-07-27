@@ -101,7 +101,19 @@ class GemmaWithSlidingWindow(GemmaForCausalLM):
         # When using the KV cache, the model only needs the attention mask
         # for the *new* tokens (queries). We slice the full mask to get
         # the last `new_token_len` rows.
-        final_attention_mask = sliding_window_mask[:, :, -new_token_len:, :]
+        sliding_window_mask2 = sliding_window_mask[:, :, -new_token_len:, :]
+
+        # 4. CRITICAL: Combine masks
+        # The trainer's `attention_mask` is [batch_size, seq_len] with 1s for real tokens and 0s for padding.
+        # We need to expand it to match the dimensions of our sliding mask for combining.
+        if attention_mask is not None:
+            # Expand from [B, S] to [B, 1, S, S]
+            expanded_padding_mask = self.model.get_extended_attention_mask(attention_mask, input_ids.shape)
+            
+            # Add the masks together. The large negative values will dominate where either mask is restrictive.
+            final_attention_mask = sliding_window_mask2 + expanded_padding_mask
+        else:
+            final_attention_mask = sliding_window_mask2
         
         # The original forward pass can now use our correctly shaped mask
         return super().forward(
@@ -110,4 +122,49 @@ class GemmaWithSlidingWindow(GemmaForCausalLM):
             # Pass our corrected and sliced mask
             attention_mask=final_attention_mask,
             **kwargs,
+        )
+
+
+class LoRACbCausalLM(torch.nn.Module):
+    def __init__(self, base_model, window_size: int):
+        super().__init__()
+        self.model = base_model
+        self.config = base_model.config
+        self.config.window_size = window_size
+        self.window_size = window_size
+
+        # if masking is enabled, pre-build mask buffer
+        if window_size > 0:
+            max_L = 512 + window_size
+            buf   = create_sliding_window_causal_mask(max_L, window_size, device=DEVICE)
+            self.register_buffer("cb_mask_full", buf, persistent=False)
+
+    def forward(self, input_ids, attention_mask=None, past_key_values=None, labels=None, **kwargs):
+        if labels is None:
+            labels = input_ids.clone()
+
+        # if no masking, delegate directly
+        if self.window_size <= 0:
+            return self.model.forward(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                past_key_values=past_key_values,
+                labels=labels,
+                **kwargs
+            )
+
+        # else apply sliding-window C_b
+        new_len  = input_ids.size(1)
+        past_len = past_key_values[0][0].size(2) if past_key_values else 0
+        total_len = past_len + new_len
+
+        full_mask  = self.cb_mask_full[..., :total_len, :total_len]
+        final_mask = full_mask[:, :, -new_len:, :]
+
+        return self.model.forward(
+            input_ids=input_ids,
+            attention_mask=final_mask,
+            past_key_values=past_key_values,
+            labels=labels,
+            **kwargs
         )
