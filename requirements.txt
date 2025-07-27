@@ -1,0 +1,11 @@
+# Main library for models and training
+transformers[torch]
+
+# Library for loading and processing datasets
+datasets
+
+# For 8-bit and 4-bit quantization (often used with large models)
+bitsandbytes
+
+# As requested for Keras
+tf-keras

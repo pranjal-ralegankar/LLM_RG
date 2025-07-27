@@ -1,0 +1,27 @@
+Let's call your servers:
+Server A: us-west-1
+Server B: us-west-2
+
+Part 1: Authorize Server A to Connect to Server B
+On Server A, log in and generate an SSH key (if you haven't already).
+
+Bash
+ssh-keygen -t rsa -b 4096
+
+Press Enter three times to accept the defaults.
+
+On Server A, view and copy the public key.
+
+Bash
+cat ~/.ssh/id_rsa.pub
+
+On Server B, log in and open the authorized_keys file with nano.
+
+Bash
+nano ~/.ssh/authorized_keys
+
+On Server B, paste the key you copied from Server A onto a new line. Save and exit (Ctrl+O, Enter, Ctrl+X).
+
+✅ You can now transfer files from A to B.
+
+Example in bash: rsync -avzP tests ubuntu@209.20.156.186:~/codebase2/
