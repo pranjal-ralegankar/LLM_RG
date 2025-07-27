@@ -2,20 +2,31 @@ import argparse
 import json
 import os
 import torch
-from transformers import AutoTokenizer, AutoModelForSequenceClassification, GPT2Tokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForSequenceClassification, AutoModelForCausalLM
 from tqdm import tqdm
+import gc
+from coarse_grain_model import GemmaWithSlidingWindow
+import re
 
 def load_model(device,model_path):
     """Loads the LLM Refusal Classifier model and tokenizer."""
     if not os.path.exists(model_path):
-        print(f"❌ Error: Refusal classifier not found at {model_path}")
-        print("Please run `python download_models.py` first.")
+        print(f"❌ Error: model not found at location: {model_path}")
+        print("Please either check the correct path to model or run `python download_models.py` first.")
         return None, None
         
     print(f"Loading m model from {model_path}...")
     tokenizer = AutoTokenizer.from_pretrained(model_path)
     if "classifier" in model_path:
         model = AutoModelForSequenceClassification.from_pretrained(model_path).to(device)
+    elif "sw" in model_path:
+        match = re.search(r"sw(\d+)", model_path)
+        if match:
+            window_mask = int(match.group(1))
+        else:
+            raise ValueError("model path is not according to convention")
+        print("Applying attention mask to previous "+str(window_mask)+" tokens")
+        model = GemmaWithSlidingWindow.from_pretrained(model_path,window_mask).to(device)
     else:
         model = AutoModelForCausalLM.from_pretrained(model_path).to(device)
     model.eval()
@@ -76,7 +87,7 @@ def count_refusals(gen_model, gen_tokenizer, classifier_model, classifier_tokeni
             
     return refusal_count
 
-def score(model_path):
+def score(model_path,num_prompts=1000):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
 
@@ -92,24 +103,35 @@ def score(model_path):
     try:
         with open(safety_data_path, 'r', encoding='utf-8') as f:
             safety_data = json.load(f)
-        harmless_prompts = safety_data['harmless']
-        jailbreak_prompts = safety_data['jailbreak']
+        harmless_prompts = safety_data['harmless'][:num_prompts]
+        jailbreak_prompts = safety_data['jailbreak'][:num_prompts]
     except FileNotFoundError:
         print(f"❌ Error: Safety data not found at {safety_data_path}. Please run download_data.py first.")
         return
 
     # 4. Evaluate on Harmless Prompts
-    print("\n--- Counting Refusals on Harmless Prompts ---")
+    print("\n--- Counting Refusals on "+str(num_prompts)+" Harmless Prompts ---")
     harmless_refusal_count = count_refusals(gen_model, gen_tokenizer, classifier_model, classifier_tokenizer, harmless_prompts, device)
     print(f"Number of refusals on harmless prompts: {harmless_refusal_count} / {len(harmless_prompts)}")
 
     # 5. Evaluate on Jailbreak Prompts
-    print("\n--- Counting Refusals on Jailbreak Prompts ---")
+    print("\n--- Counting Refusals on "+str(num_prompts)+" Jailbreak Prompts ---")
     jailbreak_refusal_count = count_refusals(gen_model, gen_tokenizer, classifier_model, classifier_tokenizer, jailbreak_prompts, device)
     print(f"Number of refusals on jailbreak prompts: {jailbreak_refusal_count} / {len(jailbreak_prompts)}")
 
     # 6. Calculate and Print Final Metric
     refusal_delta = jailbreak_refusal_count - harmless_refusal_count
+
+    # 7. Clear GPU Memory ✨
+    print("\nClearing models from GPU memory...")
+    del classifier_model
+    del gen_model
+    del classifier_tokenizer
+    del gen_tokenizer
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    print("GPU memory cleared.")
 
     return refusal_delta
 
