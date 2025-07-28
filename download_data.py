@@ -8,6 +8,8 @@ from tqdm import tqdm
 # 1. Safety Prompts: 1,000 harmless and 1,000 jailbreak prompts for evaluation.
 # 2. Pre-training Data: A 200 MB text shard for continual pre-training.
 
+BLOCK_SIZE = 512  # sequence length for grouping (e.g. 1024 tokens)
+
 def prepare_safety_data(save_dir, num_prompts=1000):
     """
     Downloads and processes safety evaluation datasets.
@@ -74,6 +76,29 @@ def prepare_safety_data(save_dir, num_prompts=1000):
     print(f"\nSuccessfully saved safety data to {output_path}")
 
 
+
+# --------------------------------------------------------------------
+# 3) Group tokens into fixed-length blocks
+# --------------------------------------------------------------------
+def group(examples):
+    """
+    Flattens and re-chunks tokenized outputs into BLOCK_SIZE segments.
+    """
+    # flatten lists of lists
+    all_ids   = list(itertools.chain.from_iterable(examples["input_ids"]))
+    all_mask  = list(itertools.chain.from_iterable(examples["attention_mask"]))
+
+    # trim to a multiple of BLOCK_SIZE
+    cut = len(all_ids) - (len(all_ids) % BLOCK_SIZE)
+    all_ids, all_mask = all_ids[:cut], all_mask[:cut]
+
+    # split into chunks
+    ids_chunks   = [all_ids[i : i + BLOCK_SIZE]  for i in range(0, cut, BLOCK_SIZE)]
+    mask_chunks  = [all_mask[i : i + BLOCK_SIZE] for i in range(0, cut, BLOCK_SIZE)]
+    return {"input_ids": ids_chunks, "attention_mask": mask_chunks}
+
+
+
 def prepare_pretraining_data(save_dir, target_size_mb=200):
     """
     Downloads and prepares a text shard for continual pre-training.
@@ -118,6 +143,82 @@ def prepare_pretraining_data(save_dir, target_size_mb=200):
     except Exception as e:
         print(f"An error occurred while preparing pre-training data: {e}")
         print("Please check your internet connection.")
+
+
+# --------------------------------------------------------------------
+# 2) Tokenize the raw text
+# --------------------------------------------------------------------
+def tokenize_batch(examples, tokenizer):
+    """
+    Tokenizes a batch of raw text examples.
+    """
+    return tokenizer(examples["text"], return_attention_mask=True)
+
+# --------------------------------------------------------------------
+# 3) Group tokens into fixed-length blocks
+# --------------------------------------------------------------------
+def group(examples):
+    """
+    Flattens and re-chunks tokenized outputs into BLOCK_SIZE segments.
+    """
+    # flatten lists of lists
+    all_ids   = list(itertools.chain.from_iterable(examples["input_ids"]))
+    all_mask  = list(itertools.chain.from_iterable(examples["attention_mask"]))
+
+    # trim to a multiple of BLOCK_SIZE
+    cut = len(all_ids) - (len(all_ids) % BLOCK_SIZE)
+    all_ids, all_mask = all_ids[:cut], all_mask[:cut]
+
+    # split into chunks
+    ids_chunks   = [all_ids[i : i + BLOCK_SIZE]  for i in range(0, cut, BLOCK_SIZE)]
+    mask_chunks  = [all_mask[i : i + BLOCK_SIZE] for i in range(0, cut, BLOCK_SIZE)]
+    return {"input_ids": ids_chunks, "attention_mask": mask_chunks}
+
+# --------------------------------------------------------------------
+# 4) Full pipeline
+# --------------------------------------------------------------------
+def build_pretraining_dataset(
+    save_dir: str,
+    target_size_mb: int = 200,
+    tokenizer_name: str = "gpt2",
+    batch_size: int = 1000,
+):
+    """
+    Runs the full pipeline:
+      1) prepare_pretraining_data -> writes raw text shard
+      2) load raw dataset from shard
+      3) tokenize
+      4) group into fixed-length blocks
+    Returns the final grouped Dataset ready for training.
+    """
+    # 1) write shard
+    shard_path = prepare_pretraining_data(save_dir, target_size_mb)
+
+    # 2) load as a Dataset
+    raw_dsets = load_dataset("text", data_files={"train": shard_path})
+    
+    # 3) instantiate tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
+    
+    # 4) tokenize
+    tokenized = raw_dsets["train"].map(
+        lambda ex: tokenize_batch(ex, tokenizer),
+        batched=True,
+        remove_columns=["text"],
+        batch_size=batch_size,
+    )
+
+    # 5) group into BLOCK_SIZE chunks
+    grouped = tokenized.map(
+        group,
+        batched=True,
+        batch_size=batch_size,
+        remove_columns=None,  # keeps only input_ids & attention_mask
+    )
+
+    return grouped
+
+
 
 if __name__ == "__main__":
     # Define the main data directory as per the project structure
